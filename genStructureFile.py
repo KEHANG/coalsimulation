@@ -16,5 +16,5 @@ if __name__ == '__main__':
             bondLines += str(previousLayerCluster) + ' ' + str(currentLayerCluster) + ' ' + \
                          str(PROBABLITY_BOND_BREAK) + ' ' + str(PROBABLITY_BOND_REFORM) + '\n'
             currentLayerCluster += 1
-    file = open('structure2.txt', 'w')
+    file = open('structure4.txt', 'w')
     file.write(bondLines)

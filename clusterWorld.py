@@ -2,8 +2,7 @@ import random
 import math
 from genStructureFile import PROBABLITY_BOND_BREAK, PROBABLITY_BOND_REFORM
 
-seedNum = 6
-random.seed(seedNum)
+
 
 def breakingProbByLeavingGroupSize(leavingGroupSize):
     return PROBABLITY_BOND_BREAK/(1.1**leavingGroupSize)
@@ -104,6 +103,24 @@ class WeightedBond(Bond):
     def __str__(self):
         return Bond.__str__(self) + ' ({0}, {1})'.format(self.probBondBreak, self.probBondReform)
 
+class BondInfo(object):
+    # mainly used for bondtuple to collect all the info associated with the bond
+    def __init__(self):
+        self.breakProb = PROBABLITY_BOND_BREAK
+        self.reformProb = PROBABLITY_BOND_REFORM
+
+    def setBreakProb(self, breakProb):
+        self.breakProb = breakProb
+
+    def setReformProb(self, reformingProb):
+        self.reformProb = reformingProb
+
+    def getBreakProb(self):
+        return self.breakProb
+
+    def getReformProb(self):
+        return self.reformProb
+
 class WeightedDigraph(Digraph):
 
     def childrenOf(self, cluster):
@@ -119,6 +136,20 @@ class WeightedDigraph(Digraph):
 
         for child in self.childrenOf(cluster):
             if child in clusterSet:
+                continue
+            else:
+                clusterSet.union(self.getMaxConnectedClusterGroupWith(child, clusterSet))
+
+        return clusterSet
+
+    def getMaxConnectedClusterGroupWithThisWithoutThat(self, clusterThis, clusterThat, clusterSet = set([])):
+        # this method is mainly to calculate the maxConnectedClusterGroup suppose bond (this --> that) is broken
+        clusterSet.add(clusterThis)
+        if self.childrenOf(clusterThis).issubset(clusterSet):
+            return clusterSet
+
+        for child in self.childrenOf(clusterThis):
+            if child in clusterSet or child == clusterThat:
                 continue
             else:
                 clusterSet.union(self.getMaxConnectedClusterGroupWith(child, clusterSet))
@@ -165,15 +196,19 @@ class WeightedDigraph(Digraph):
     def addBond(self, bond):
         src = bond.getSource()
         dest = bond.getDestination()
-        probBondBreak = bond.getProbBondBreak()
-        probBondReform = bond.getProbBondReform()
+
 
         if not(src in self.clusters and dest in self.clusters):
             raise ValueError('Cluster not in graph')
 
         if (not self.hasDestInBondsOfSrc(src, dest)) and (not self.hasDestInBondsOfSrc(dest, src)):
-            self.bonds[src].add((dest,probBondBreak,probBondReform))
-            self.bonds[dest].add((src,probBondBreak,probBondReform))
+            probBondBreak = bond.getProbBondBreak()
+            probBondReform = bond.getProbBondReform()
+            bondInfo = BondInfo()
+            bondInfo.setBreakProb(probBondBreak)
+            bondInfo.setReformProb(probBondReform)
+            self.bonds[src].add((dest,bondInfo))
+            self.bonds[dest].add((src,bondInfo))
         else:
             raise ValueError('Bond: {0} already exists!'.format(str(bond)))
 
@@ -182,15 +217,19 @@ class WeightedDigraph(Digraph):
     def addPotentialReformBond(self, potentialReformBond):
         src = potentialReformBond.getSource()
         dest = potentialReformBond.getDestination()
-        probBondBreak = potentialReformBond.getProbBondBreak()
-        probBondReform = potentialReformBond.getProbBondReform()
+
 
         if not(src in self.clusters):
             raise ValueError('Cluster not in graph')
 
         if not self.hasDestInPotentialReformBondsOfSrc(src, dest):
-            self.potentialReformBonds[src].append((dest,probBondBreak,probBondReform))
-            self.potentialReformBonds[dest].append((src,probBondBreak,probBondReform))
+            probBondBreak = potentialReformBond.getProbBondBreak()
+            probBondReform = potentialReformBond.getProbBondReform()
+            bondInfo = BondInfo()
+            bondInfo.setBreakProb(probBondBreak)
+            bondInfo.setReformProb(probBondReform)
+            self.potentialReformBonds[src].append((dest,bondInfo))
+            self.potentialReformBonds[dest].append((src,bondInfo))
         else:
             raise ValueError('Potential Reform Bond: {0} already exists!'.format(str(potentialReformBond)))
 
@@ -251,8 +290,9 @@ class WeightedDigraph(Digraph):
                 cluster2 = bondTuple[0]
                 if cluster1.getName() > cluster2.getName():
                     rand = random.random()
-                    breakProb = bondTuple[1]
-                    reformProb = bondTuple[2]
+                    bondInfo = bondTuple[1]
+                    breakProb = bondInfo.getBreakProb()
+                    reformProb = bondInfo.getReformProb()
                     if rand < breakProb:
                         bondToRemove = WeightedBond(cluster1, cluster2, breakProb, reformProb)
                         removeBondList.append(bondToRemove)
@@ -268,8 +308,9 @@ class WeightedDigraph(Digraph):
                 cluster2 = bondTuple[0]
                 if cluster1.getName() > cluster2.getName():
                     rand = random.random()
-                    breakProb = bondTuple[1]
-                    reformProb = bondTuple[2]
+                    bondInfo = bondTuple[1]
+                    breakProb = bondInfo.getBreakProb()
+                    reformProb = bondInfo.getReformProb()
                     if rand < reformProb:
                         bondToReform = WeightedBond(cluster1, cluster2, breakProb, reformProb)
                         reformBondList.append(bondToReform)
@@ -277,34 +318,35 @@ class WeightedDigraph(Digraph):
 
 
     def calcBreakingProb(self, bond, breakingProbFunc = breakingProbByLeavingGroupSize):
-        # remove the bond from the graph
-        self.removeBond(bond)
 
         # get the size of leaving group containing src cluster and dest cluster respectvely
         src = bond.getSource()
         dest = bond.getDestination()
-        srcGroupSize = len(self.getMaxConnectedClusterGroupWith(src, set([])))
-        destGroupSize = len(self.getMaxConnectedClusterGroupWith(dest, set([])))
+
+        srcGroupSize = len(self.getMaxConnectedClusterGroupWithThisWithoutThat(src, dest, set([])))
+        graphClusterNum = self.getClusterNum()
+
+        if srcGroupSize == graphClusterNum:
+            destGroupSize = srcGroupSize
+        else:
+            destGroupSize = graphClusterNum - srcGroupSize
 
         # define leaving size and calculate the breaking probability based on the size
-        leavingGroupSize = max(srcGroupSize, destGroupSize)
+        leavingGroupSize = min(srcGroupSize, destGroupSize)
         breakingProb = breakingProbFunc(leavingGroupSize)
-
-        # add the bond back to graph
-        self.addBond(bond)
 
         return breakingProb
 
-    # def updateBreakingProbForEachBond(self):
-    #     for src in self.clusters:
-    #         for bondTuple in self.bonds[src]:
-    #             dest = bondTuple[0]
-    #             bond = Bond(src, dest)
-    #             newBreakingProb = self.calcBreakingProb(bond)
+
     #TODO (dest, prob1, prob2,...) is too cumbersome to modify, why not create Class BondPartner
-    #
-
-
+    def updateBreakingProbForEachBond(self):
+        for src in self.clusters:
+            for bondTuple in self.bonds[src]:
+                dest = bondTuple[0]
+                bondInfo = bondTuple[1]
+                bond = Bond(src, dest)
+                newBreakingProb = self.calcBreakingProb(bond)
+                bondInfo.setBreakProb(newBreakingProb)
 
 
 
@@ -312,7 +354,7 @@ class WeightedDigraph(Digraph):
         res = ''
         for k in self.bonds:
             for d in self.bonds[k]:
-                res = '{0}{1}->{2} ({3})\n'.format(res, k, d[0], d[1])
+                res = '{0}{1}->{2} ({3})\n'.format(res, k, d[0], d[1].getBreakProb())
         return res[:-1]
 
 class World(object):
