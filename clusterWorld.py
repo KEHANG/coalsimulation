@@ -1,8 +1,12 @@
 import random
+import math
 from genStructureFile import PROBABLITY_BOND_BREAK, PROBABLITY_BOND_REFORM
 
 seedNum = 6
 random.seed(seedNum)
+
+def breakingProbByLeavingGroupSize(leavingGroupSize):
+    return PROBABLITY_BOND_BREAK/(1.1**leavingGroupSize)
 
 class Cluster(object):
     def __init__(self, name):
@@ -194,6 +198,7 @@ class WeightedDigraph(Digraph):
         for potentialReformBond in potentialReformBondList:
             self.addPotentialReformBond(potentialReformBond)
 
+
     def removePotentialReformBond(self, potentialReformBond):
         # this method is used only after
         # potential reform bond has been reformed
@@ -225,8 +230,6 @@ class WeightedDigraph(Digraph):
     def removeBond(self, bondToRemove):
         src = bondToRemove.getSource()
         dest = bondToRemove.getDestination()
-        breakProb = bondToRemove.getProbBondBreak()
-        reformPorb = bondToRemove.getProbBondReform()
         if not(src in self.clusters and dest in self.clusters):
             raise ValueError('Cluster not in graph')
 
@@ -271,6 +274,38 @@ class WeightedDigraph(Digraph):
                         bondToReform = WeightedBond(cluster1, cluster2, breakProb, reformProb)
                         reformBondList.append(bondToReform)
         return reformBondList
+
+
+    def calcBreakingProb(self, bond, breakingProbFunc = breakingProbByLeavingGroupSize):
+        # remove the bond from the graph
+        self.removeBond(bond)
+
+        # get the size of leaving group containing src cluster and dest cluster respectvely
+        src = bond.getSource()
+        dest = bond.getDestination()
+        srcGroupSize = len(self.getMaxConnectedClusterGroupWith(src, set([])))
+        destGroupSize = len(self.getMaxConnectedClusterGroupWith(dest, set([])))
+
+        # define leaving size and calculate the breaking probability based on the size
+        leavingGroupSize = max(srcGroupSize, destGroupSize)
+        breakingProb = breakingProbFunc(leavingGroupSize)
+
+        # add the bond back to graph
+        self.addBond(bond)
+
+        return breakingProb
+
+    # def updateBreakingProbForEachBond(self):
+    #     for src in self.clusters:
+    #         for bondTuple in self.bonds[src]:
+    #             dest = bondTuple[0]
+    #             bond = Bond(src, dest)
+    #             newBreakingProb = self.calcBreakingProb(bond)
+    #TODO (dest, prob1, prob2,...) is too cumbersome to modify, why not create Class BondPartner
+    #
+
+
+
 
 
     def __str__(self):
@@ -417,12 +452,17 @@ class World(object):
             bondListToReform = []
 
             for digraph in self.digraphs:
+
+                # generate removal bond list for each graph in world
+                # every time before generating removal bonds
+                # should update the breaking probability
                 bondListToRemove = digraph.genRemoveBondList()
 
                 print('BondList To Remove: ')
                 for bond in bondListToRemove:
                     print(bond)
 
+                # generate reform bond list for each graph in world
                 bondListToReform = digraph.genReformBondList()
 
                 print('BondList To Reform: ')
