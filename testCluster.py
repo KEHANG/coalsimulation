@@ -1,8 +1,5 @@
 from clusterWorld import *
 
-seedNum = 6
-random.seed(seedNum)
-
 file1 = 'structure.txt'
 file2 = 'structureNoReform.txt'
 file3 = 'structure3.txt'
@@ -40,3 +37,17 @@ def testUpdateBreakingProbForEachBond():
         print(graph)
 
 # testUpdateBreakingProbForEachBond()
+
+def testSingleSimulationWithNonUpdateBreakProb():
+    world = World(file4)
+    world.digraphs = world.loadDigraph()
+    world.singleSimulation(500, False)
+
+# testSingleSimulationWithNonUpdateBreakProb()
+
+def testSingleSimulationWithUpdateBreakProb():
+    world = World(file1)
+    world.digraphs = world.loadDigraph()
+    world.singleSimulation(500, True)
+
+# testSingleSimulationWithUpdateBreakProb()

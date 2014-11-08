@@ -2,6 +2,8 @@ import random
 import math
 from genStructureFile import PROBABLITY_BOND_BREAK, PROBABLITY_BOND_REFORM
 
+seedNum = 0
+random.seed(seedNum)
 
 
 def breakingProbByLeavingGroupSize(leavingGroupSize):
@@ -88,26 +90,11 @@ class Digraph(object):
                 res = '{0}{1}->{2}\n'.format(res, k, d)
         return res[:-1]
 
-class WeightedBond(Bond):
-    def __init__(self, src, dest, probBondBreak = PROBABLITY_BOND_BREAK, probBondReform = PROBABLITY_BOND_REFORM):
-        Bond.__init__(self, src, dest)
-        self.probBondBreak = probBondBreak
-        self.probBondReform = probBondReform
-
-    def getProbBondBreak(self):
-        return self.probBondBreak
-
-    def getProbBondReform(self):
-        return self.probBondReform
-
-    def __str__(self):
-        return Bond.__str__(self) + ' ({0}, {1})'.format(self.probBondBreak, self.probBondReform)
-
 class BondInfo(object):
     # mainly used for bondtuple to collect all the info associated with the bond
-    def __init__(self):
-        self.breakProb = PROBABLITY_BOND_BREAK
-        self.reformProb = PROBABLITY_BOND_REFORM
+    def __init__(self, breakProb = PROBABLITY_BOND_BREAK, reformProb = PROBABLITY_BOND_REFORM):
+        self.breakProb = breakProb
+        self.reformProb = reformProb
 
     def setBreakProb(self, breakProb):
         self.breakProb = breakProb
@@ -120,6 +107,22 @@ class BondInfo(object):
 
     def getReformProb(self):
         return self.reformProb
+
+class WeightedBond(Bond):
+    def __init__(self, src, dest, bondInfo):
+        Bond.__init__(self, src, dest)
+        self.bondInfo = bondInfo
+
+    def getProbBondBreak(self):
+        return self.bondInfo.getBreakProb()
+
+    def getProbBondReform(self):
+        return self.bondInfo.getReformProb()
+
+    def __str__(self):
+        return Bond.__str__(self) + ' ({0}, {1})'.format(self.getProbBondBreak(), self.getProbBondReform())
+
+
 
 class WeightedDigraph(Digraph):
 
@@ -196,7 +199,6 @@ class WeightedDigraph(Digraph):
     def addBond(self, bond):
         src = bond.getSource()
         dest = bond.getDestination()
-
 
         if not(src in self.clusters and dest in self.clusters):
             raise ValueError('Cluster not in graph')
@@ -292,9 +294,8 @@ class WeightedDigraph(Digraph):
                     rand = random.random()
                     bondInfo = bondTuple[1]
                     breakProb = bondInfo.getBreakProb()
-                    reformProb = bondInfo.getReformProb()
                     if rand < breakProb:
-                        bondToRemove = WeightedBond(cluster1, cluster2, breakProb, reformProb)
+                        bondToRemove = WeightedBond(cluster1, cluster2, bondInfo)
                         removeBondList.append(bondToRemove)
         return removeBondList
 
@@ -309,10 +310,9 @@ class WeightedDigraph(Digraph):
                 if cluster1.getName() > cluster2.getName():
                     rand = random.random()
                     bondInfo = bondTuple[1]
-                    breakProb = bondInfo.getBreakProb()
                     reformProb = bondInfo.getReformProb()
                     if rand < reformProb:
-                        bondToReform = WeightedBond(cluster1, cluster2, breakProb, reformProb)
+                        bondToReform = WeightedBond(cluster1, cluster2, bondInfo)
                         reformBondList.append(bondToReform)
         return reformBondList
 
@@ -338,17 +338,15 @@ class WeightedDigraph(Digraph):
         return breakingProb
 
 
-    #TODO (dest, prob1, prob2,...) is too cumbersome to modify, why not create Class BondPartner
     def updateBreakingProbForEachBond(self):
         for src in self.clusters:
             for bondTuple in self.bonds[src]:
                 dest = bondTuple[0]
                 bondInfo = bondTuple[1]
+                # to calculate breakProb it's not necessary to know previous bondinfo
                 bond = Bond(src, dest)
                 newBreakingProb = self.calcBreakingProb(bond)
                 bondInfo.setBreakProb(newBreakingProb)
-
-
 
     def __str__(self):
         res = ''
@@ -387,7 +385,8 @@ class World(object):
             dest = Cluster(lineSplit[1])
             breakProb = float(lineSplit[2])
             reformProb = float(lineSplit[3])
-            bond = WeightedBond(src, dest, breakProb, reformProb)
+            bondInfo = BondInfo(breakProb = breakProb, reformProb = reformProb)
+            bond = WeightedBond(src, dest, bondInfo)
 
             # add src and dest two clusters
             if not weightedDigraph.hasCluster(src):
@@ -484,32 +483,21 @@ class World(object):
             combinedGraph.addBond(bondToCombineGraphs)
             combinedGraph.removePotentialReformBond(bondToCombineGraphs)
 
-    def singleSimulation(self, steps):
+    def singleSimulation(self, steps, updateBreakProb = True):
         self.digraphs = self.loadDigraph()
         for step in range(steps):
-
             bondListToCombineGraphs = []
-
-            bondListToRemove = []
-            bondListToReform = []
-
             for digraph in self.digraphs:
 
                 # generate removal bond list for each graph in world
                 # every time before generating removal bonds
                 # should update the breaking probability
+                if updateBreakProb == True:
+                    digraph.updateBreakingProbForEachBond()
                 bondListToRemove = digraph.genRemoveBondList()
-
-                print('BondList To Remove: ')
-                for bond in bondListToRemove:
-                    print(bond)
 
                 # generate reform bond list for each graph in world
                 bondListToReform = digraph.genReformBondList()
-
-                print('BondList To Reform: ')
-                for bond in bondListToReform:
-                    print(bond)
 
                 digraph.removeBondList(bondListToRemove)
                 digraph.addPotentialReformBondList(bondListToRemove)
@@ -548,3 +536,8 @@ class World(object):
         print(clusterNum_range)
         print(frequencies)
         self.getHistogram(self.getClusterNumList())
+
+
+    #TODO Consider reform prob update
+    #TODO Visualize the whole process
+
